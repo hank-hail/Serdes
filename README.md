@@ -19,7 +19,7 @@ const player_datac: Serdes.Object<Data> = Serdes.object{
 	Serdes.field("level", Serdes.u8),
 	Serdes.field("health", Serdes.u8),
 	Serdes.field("position", Serdes.Vector3_8),
-)
+}
 
 const encoded = player_data:encode{
 	is_alive = true,
