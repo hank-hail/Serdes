@@ -59,5 +59,5 @@ Serdes.string
 Serdes.Vector3_8
 Serdes.Vector3_12
 Serdes.CFrame_12
-Serdes.CFrame_20
+Serdes.CFrame_17
 ```
