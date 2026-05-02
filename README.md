@@ -1,4 +1,3 @@
-````md
 # Serdes
 
 Compact binary serialization/desiralization for Roblox Luau.
