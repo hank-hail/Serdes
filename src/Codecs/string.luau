@@ -9,8 +9,6 @@ type Writer = Core.Writer
 type Reader = Core.Reader
 type Codec = Core.Codec<string>
 
-const MAX_U32 = Core.MAX_U32
-
 const buffer_writestring = buffer.writestring
 const buffer_readstring = buffer.readstring
 
@@ -22,10 +20,6 @@ return table.freeze{
 
 		const byte_length = #value
 
-		if byte_length > MAX_U32 then
-			error(`Serdes.string expected byte length <= {MAX_U32}, got {byte_length}`, 3)
-		end
-
 		local offset = writer.offset
 
 		if byte_length < 0x80 then
@@ -35,54 +29,59 @@ return table.freeze{
 				resize(writer, needed_bytes)
 			end
 
-			buffer.writeu8(writer.buffer, offset, byte_length)
+			const writer_buffer = writer.buffer
+
+			buffer.writeu8(writer_buffer, offset, byte_length)
 
 			if byte_length > 0 then
-				buffer_writestring(writer.buffer, offset + 1, value)
+				buffer_writestring(writer_buffer, offset + 1, value)
 			end
 
 			writer.offset = offset + needed_bytes
 			return
 		end
 
-		local prefix_size = 5
+		local prefix_size = 1
+		local probe = byte_length // 128
 
-		if byte_length < 0x4000 then
-			prefix_size = 2
-		elseif byte_length < 0x200000 then
-			prefix_size = 3
-		elseif byte_length < 0x10000000 then
-			prefix_size = 4
+		while probe > 0 do
+			prefix_size += 1
+			probe //= 128
 		end
 
-		if offset + prefix_size + byte_length > writer.capacity then
-			resize(writer, prefix_size + byte_length)
+		const needed_bytes = prefix_size + byte_length
+
+		if offset + needed_bytes > writer.capacity then
+			resize(writer, needed_bytes)
 		end
 
+		const writer_buffer = writer.buffer
 		local remaining = byte_length
 
 		while remaining >= 0x80 do
-			buffer.writeu8(writer.buffer, offset, (remaining % 128) + 128)
+			buffer.writeu8(writer_buffer, offset, remaining % 128 + 128)
 			remaining //= 128
 			offset += 1
 		end
 
-		buffer.writeu8(writer.buffer, offset, remaining)
+		buffer.writeu8(writer_buffer, offset, remaining)
 		offset += 1
+
+		buffer_writestring(writer_buffer, offset, value)
+
 		writer.offset = offset + byte_length
-		buffer_writestring(writer.buffer, offset, value)
 	end,
 
 	read = function(self: Codec, reader: Reader): string
 		local offset = reader.offset
 		const length = reader.length
-		const data = reader.buffer
+		const reader_buffer = reader.buffer
 
 		if offset + 1 > length then
 			error(`Serdes read out of bounds. Needed 1 bytes at offset {offset}.`, 3)
 		end
 
-		const byte0 = buffer.readu8(data, offset)
+		const byte0 = buffer.readu8(reader_buffer, offset)
 		offset += 1
 
 		if byte0 < 0x80 then
@@ -92,44 +91,42 @@ return table.freeze{
 			end
 
 			if offset + byte0 > length then
-				reader.offset = offset
 				error(`Serdes read out of bounds. Needed {byte0} bytes at offset {offset}.`, 3)
 			end
 
 			reader.offset = offset + byte0
 
-			return buffer_readstring(data, offset, byte0)
+			return buffer_readstring(reader_buffer, offset, byte0)
 		end
 
-		local byte_length = byte0 % 128
+		local byte_length = byte0 - 128
 		local multiplier = 128
 
 		for index = 2, 5 do
 			if offset + 1 > length then
-				reader.offset = offset
 				error(`Serdes read out of bounds. Needed 1 bytes at offset {offset}.`, 3)
 			end
 
-			const byte = buffer.readu8(data, offset)
+			const byte = buffer.readu8(reader_buffer, offset)
 			offset += 1
 
 			if index == 5 and byte > 15 then
 				error("Serdes.string length var_u32 overflowed u32 range.", 3)
 			end
 
-			byte_length += (byte % 128) * multiplier
+			if byte < 0x80 then
+				byte_length += byte * multiplier
 
-			if byte < 128 then
 				if offset + byte_length > length then
-					reader.offset = offset
 					error(`Serdes read out of bounds. Needed {byte_length} bytes at offset {offset}.`, 3)
 				end
 
 				reader.offset = offset + byte_length
 
-				return buffer_readstring(data, offset, byte_length)
+				return buffer_readstring(reader_buffer, offset, byte_length)
 			end
 
+			byte_length += (byte - 128) * multiplier
 			multiplier *= 128
 		end
 
