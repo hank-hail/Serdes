@@ -27,7 +27,7 @@ export type Codecs = {
 	Vector3_12: Codec<Vector3>,
 
 	CFrame_12: Codec<CFrame>,
-	CFrame_20: Codec<CFrame>,
+	CFrame_17: Codec<CFrame>,
 
 	[string]: Codec<any>,
 }
